@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#2563eb"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="Diario Sfighe"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="icon.svg"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet"/>
+  <title>Diario delle Sfighe</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', 'Segoe UI', sans-serif; }
+    button { font-family: 'DM Sans', 'Segoe UI', sans-serif; cursor: pointer; }
+    input, textarea { font-family: 'DM Sans', 'Segoe UI', sans-serif; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script>
+const e = React.createElement;
+const { useState, useEffect } = React;
+
+const HEAD_COLOR = "#2563eb";
+const STOM_COLOR = "#dc2626";
+const CARD_BG = "#fefefe";
+
+const fmt = d => new Date(d).toLocaleDateString("it-IT",{day:"2-digit",month:"short",year:"numeric"});
+const fmtT = t => t||"—";
+const TODAY = () => new Date().toISOString().split("T")[0];
+const daysAgo = n => { const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().split("T")[0]; };
+
+const QUICK_DAYS = [{label:"Oggi",value:TODAY()},{label:"Ieri",value:daysAgo(1)},{label:"2 giorni fa",value:daysAgo(2)}];
+const HEAD_LOCATIONS = ["Casa","Lavoro","Auto","Esterno","Altro"];
+const HEAD_TRIGGERS = ["Microscopio","Cappa vegetale","Computer","Telefono","Sbalzi di temperatura","Stress","Stanchezza","Luce intensa","Disidratazione","Rumore","Mestruazioni","Altro"];
+const HEAD_MEDS = ["Tachicaf","Brufen 600","Tachipirina 1000","Oki","Nessuno"];
+const HEAD_EFFECTS = ["Passato completamente","Migliorato parzialmente","Non passato","Peggiorato"];
+const STOM_LOCATIONS = ["Casa","Lavoro","Auto","Esterno","Ristorante","Altro"];
+const STOM_TRIGGERS = ["Cibo","Bevanda","Stress","Farmaci","Altro"];
+const STOM_TYPES = ["Dolore","Reflusso","Nausea","Acidit\u00e0","Pesantezza"];
+const STOM_MEDS = ["Geffer","Gaviscon","Maalox","Nessuno"];
+const STOM_EFFECTS = ["Passato completamente","Migliorato parzialmente","Non passato","Peggiorato"];
+const SIDE_EFFECTS = ["Sonnolenza","Nausea","Mal di stomaco","Bruciore","Vertigini","Nessuno"];
+const GIORNI_MESTR = Array.from({length:10},function(_,i){return (i+1)+"°";});
+const FILTER_OPTIONS = [{label:"1 mese",months:1},{label:"3 mesi",months:3},{label:"6 mesi",months:6},{label:"1 anno",months:12}];
+
+const store = {
+  get: function(k) { try { var v=localStorage.getItem(k); return v?JSON.parse(v):null; } catch(ex){return null;} },
+  set: function(k,v) { try { localStorage.setItem(k,JSON.stringify(v)); } catch(ex){} }
+};
+
+const emptyHead = function() { return {id:Date.now(),type:"head",date:TODAY(),timeStart:"",timeEnd:"",painLevel:0,location:"",altroLocation:"",triggers:[],altroTrigger:"",mestruazioniGiorno:"",medicine:"Nessuno",medicineTime:"",effect:"",sideEffects:[],notes:""}; };
+const emptyStom = function() { return {id:Date.now(),type:"stom",date:TODAY(),timeStart:"",timeEnd:"",stomType:[],location:"",altroLocation:"",triggers:[],altroTrigger:"",cibo:"",bevanda:"",medicine:"Nessuno",medicineTime:"",effect:"",sideEffects:[],notes:""}; };
+
+var inputStyle = {width:"100%",padding:"9px 12px",border:"1.5px solid #e0e0e0",borderRadius:8,fontSize:14,background:"#fafafa",boxSizing:"border-box",outline:"none"};
+
+function Badge(props) {
+  return e('button',{onClick:props.onClick,style:{padding:"6px 14px",borderRadius:20,border:"1.5px solid "+props.color,background:props.active?props.color:"transparent",color:props.active?"#fff":props.color,fontSize:13,fontWeight:500,marginBottom:6,marginRight:6,transition:"all .18s"}},props.children);
+}
+
+function Field(props) {
+  return e('div',{style:{marginBottom:18}},
+    e('label',{style:{display:"block",fontSize:12,fontWeight:700,letterSpacing:.8,color:"#888",marginBottom:6,textTransform:"uppercase"}},props.label),
+    props.children
+  );
+}
+
+function Inp(props) {
+  var style = Object.assign({},inputStyle,props.style||{});
+  var newProps = Object.assign({},props,{style:style,onFocus:function(ev){ev.target.style.borderColor="#999";},onBlur:function(ev){ev.target.style.borderColor="#e0e0e0";}});
+  return e('input',newProps);
+}
+
+function Txta(props) {
+  var style = Object.assign({},inputStyle,{resize:"vertical"},props.style||{});
+  return e('textarea',Object.assign({},props,{rows:3,style:style}));
+}
+
+function MultiSelect(props) {
+  return e('div',{style:{display:"flex",flexWrap:"wrap"}},
+    props.options.map(function(o) {
+      return e(Badge,{key:o,color:props.color,active:props.value.indexOf(o)>=0,onClick:function(){
+        if(props.value.indexOf(o)>=0) props.onChange(props.value.filter(function(x){return x!==o;}));
+        else props.onChange(props.value.concat([o]));
+      }},o);
+    })
+  );
+}
+
+function SingleSelect(props) {
+  return e('div',{style:{display:"flex",flexWrap:"wrap"}},
+    props.options.map(function(o) {
+      return e(Badge,{key:o,color:props.color,active:props.value===o,onClick:function(){props.onChange(props.value===o?"":o);}},o);
+    })
+  );
+}
+
+function PainScale(props) {
+  function gc(n) { return n<=3?"#22c55e":n<=6?"#f59e0b":"#ef4444"; }
+  return e('div',null,
+    e('div',{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+      [1,2,3,4,5,6,7,8,9,10].map(function(n) {
+        var a=props.value===n; var c=gc(n);
+        return e('button',{key:n,onClick:function(){props.onChange(a?0:n);},style:{width:38,height:38,borderRadius:8,border:"2px solid "+(a?c:"#e0e0e0"),background:a?c:"#fafafa",color:a?"#fff":"#999",fontWeight:700,fontSize:14,boxShadow:a?"0 2px 8px "+c+"55":"none"}},n);
+      })
+    ),
+    props.value>0?e('div',{style:{marginTop:8,fontSize:12,fontWeight:600,color:gc(props.value)}},props.value<=3?"🟢 Lieve":props.value<=6?"🟡 Moderato":"🔴 Intenso"):null
+  );
+}
+
+function IEField(props) {
+  return e('div',{style:{padding:"10px 0",borderBottom:"1px solid #f5f5f5"}},
+    e('div',{style:{fontSize:11,fontWeight:700,color:"#aaa",letterSpacing:.7,marginBottom:6}},props.label),
+    props.children
+  );
+}
+
+function STitle(props) {
+  return e('div',{style:{fontSize:11,fontWeight:700,letterSpacing:.8,color:"#aaa",textTransform:"uppercase",marginBottom:14}},props.children);
+}
+
+function AttackCard(props) {
+  var a=props.a, color=props.color;
+  var _open=useState(false); var open=_open[0]; var setOpen=_open[1];
+  var _editing=useState(false); var editing=_editing[0]; var setEditing=_editing[1];
+  var _draft=useState(a); var draft=_draft[0]; var setDraft=_draft[1];
+  var isHead=a.type==="head";
+  function set(k,v){setDraft(function(d){var r=Object.assign({},d); r[k]=v; return r;});}
+  function save(){props.onUpdate(draft);setEditing(false);}
+
+  function triggerDisplay(t) {
+    if(t==="Mestruazioni"&&a.mestruazioniGiorno) return "Mestruazioni ("+a.mestruazioniGiorno+" giorno)";
+    if(t==="Altro"&&a.altroTrigger) return "Altro: "+a.altroTrigger;
+    return t;
+  }
+
+  return e('div',{style:{background:CARD_BG,borderRadius:12,border:"1px solid #ececec",borderLeft:"4px solid "+color,marginBottom:12,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,.05)"}},
+    e('div',{onClick:function(){if(!editing)setOpen(!open);},style:{padding:"14px 18px",cursor:editing?"default":"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+      e('div',null,
+        e('span',{style:{fontWeight:700,fontSize:15}},fmt(a.date)),
+        e('span',{style:{color:"#999",fontSize:13,marginLeft:10}},fmtT(a.timeStart)+(a.timeEnd?" → "+fmtT(a.timeEnd):"")),
+        isHead&&a.painLevel>0?e('span',{style:{marginLeft:8,fontSize:12,fontWeight:700,color:a.painLevel<=3?"#22c55e":a.painLevel<=6?"#f59e0b":"#ef4444"}},"· dolore "+a.painLevel+"/10"):null,
+        !isHead&&a.stomType&&a.stomType.length>0?e('span',{style:{marginLeft:8,fontSize:12,color:color,fontWeight:600}},"· "+a.stomType.join(", ")):null
+      ),
+      e('div',{style:{display:"flex",alignItems:"center",gap:8}},
+        a.location?e('span',{style:{fontSize:12,background:"#f3f3f3",borderRadius:20,padding:"3px 10px",color:"#555"}},a.location==="Altro"&&a.altroLocation?a.altroLocation:a.location):null,
+        !editing?e('span',{style:{fontSize:16,color:"#bbb"}},open?"▲":"▼"):null
+      )
+    ),
+    open&&!editing?e('div',{style:{padding:"0 18px 18px",borderTop:"1px solid #f0f0f0"}},
+      e('div',{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:14}},
+        a.triggers&&a.triggers.length>0?e('div',null,
+          e('div',{style:{fontSize:11,fontWeight:700,color:"#aaa",letterSpacing:.7,marginBottom:5}},"FATTORI SCATENANTI"),
+          e('div',{style:{display:"flex",flexWrap:"wrap",gap:4}},a.triggers.map(function(t){return e('span',{key:t,style:{fontSize:12,background:color+"18",color:color,borderRadius:20,padding:"3px 10px",fontWeight:500}},triggerDisplay(t));})),
+          a.cibo?e('div',{style:{fontSize:12,color:"#666",marginTop:4}},"🍽 "+a.cibo):null,
+          a.bevanda?e('div',{style:{fontSize:12,color:"#666",marginTop:2}},"🥤 "+a.bevanda):null
+        ):null,
+        a.medicine&&a.medicine!=="Nessuno"?e('div',null,e('div',{style:{fontSize:11,fontWeight:700,color:"#aaa",letterSpacing:.7,marginBottom:5}},"FARMACO"),e('div',{style:{fontSize:13}},a.medicine+(a.medicineTime?" · "+a.medicineTime:""))):null,
+        a.effect?e('div',null,e('div',{style:{fontSize:11,fontWeight:700,color:"#aaa",letterSpacing:.7,marginBottom:5}},"EFFETTO"),e('div',{style:{fontSize:13}},a.effect)):null,
+        a.sideEffects&&a.sideEffects.filter(function(s){return s!=="Nessuno";}).length>0?e('div',null,e('div',{style:{fontSize:11,fontWeight:700,color:"#aaa",letterSpacing:.7,marginBottom:5}},"EFFETTI COLLATERALI"),e('div',{style:{fontSize:13}},a.sideEffects.filter(function(s){return s!=="Nessuno";}).join(", "))):null
+      ),
+      a.notes?e('div',{style:{marginTop:12,padding:"10px 12px",background:"#fafafa",borderRadius:8,fontSize:13,color:"#555",fontStyle:"italic"}},"📝 "+a.notes):null,
+      e('div',{style:{display:"flex",gap:8,marginTop:14}},
+        e('button',{onClick:function(){setDraft(Object.assign({},a));setEditing(true);},style:{padding:"6px 16px",border:"1.5px solid "+color,background:"transparent",color:color,borderRadius:8,fontSize:12,fontWeight:600}},"✏️ Modifica"),
+        e('button',{onClick:function(){props.onDelete(a.id);},style:{padding:"6px 16px",border:"none",background:"#fee",color:"#c00",borderRadius:8,fontSize:12,fontWeight:600}},"🗑 Elimina")
+      )
+    ):null,
+    open&&editing?e('div',{style:{padding:"0 18px 18px",borderTop:"1px solid #f0f0f0"}},
+      e('div',{style:{marginTop:14}},
+        e(IEField,{label:"Ora fine"},e(Inp,{type:"time",value:draft.timeEnd,onChange:function(ev){set("timeEnd",ev.target.value);},style:{maxWidth:160}})),
+        isHead?e(IEField,{label:"Intensit\u00e0 dolore"},e(PainScale,{value:draft.painLevel||0,onChange:function(v){set("painLevel",v);}})):null,
+        !isHead?e(IEField,{label:"Tipologia"},e(MultiSelect,{options:STOM_TYPES,value:draft.stomType||[],onChange:function(v){set("stomType",v);},color:color})):null,
+        e(IEField,{label:"Farmaco"},e(SingleSelect,{options:isHead?HEAD_MEDS:STOM_MEDS,value:draft.medicine,onChange:function(v){set("medicine",v||"Nessuno");},color:color})),
+        draft.medicine&&draft.medicine!=="Nessuno"?e(IEField,{label:"Orario farmaco"},e(Inp,{type:"time",value:draft.medicineTime,onChange:function(ev){set("medicineTime",ev.target.value);},style:{maxWidth:160}})):null,
+        e(IEField,{label:"Effetto"},e(SingleSelect,{options:isHead?HEAD_EFFECTS:STOM_EFFECTS,value:draft.effect,onChange:function(v){set("effect",v);},color:color})),
+        e(IEField,{label:"Effetti collaterali"},e(MultiSelect,{options:SIDE_EFFECTS,value:draft.sideEffects||[],onChange:function(v){set("sideEffects",v);},color:color})),
+        isHead&&draft.triggers&&draft.triggers.indexOf("Mestruazioni")>=0?e(IEField,{label:"Giorno del ciclo"},e(SingleSelect,{options:GIORNI_MESTR,value:draft.mestruazioniGiorno||"",onChange:function(v){set("mestruazioniGiorno",v);},color:color})):null,
+        !isHead&&draft.triggers&&draft.triggers.indexOf("Cibo")>=0?e(IEField,{label:"Cosa hai mangiato?"},e(Inp,{placeholder:"es. pasta, pizza\u2026",value:draft.cibo||"",onChange:function(ev){set("cibo",ev.target.value);}})):null,
+        !isHead&&draft.triggers&&draft.triggers.indexOf("Bevanda")>=0?e(IEField,{label:"Cosa hai bevuto?"},e(Inp,{placeholder:"es. caff\u00e8, alcool\u2026",value:draft.bevanda||"",onChange:function(ev){set("bevanda",ev.target.value);}})):null,
+        draft.triggers&&draft.triggers.indexOf("Altro")>=0?e(IEField,{label:"Specifica trigger"},e(Inp,{placeholder:"Descrivi\u2026",value:draft.altroTrigger||"",onChange:function(ev){set("altroTrigger",ev.target.value);}})):null
+      ),
+      e('div',{style:{display:"flex",gap:8,marginTop:16}},
+        e('button',{onClick:save,style:{padding:"8px 20px",background:color,color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700}},"✅ Salva modifiche"),
+        e('button',{onClick:function(){setEditing(false);},style:{padding:"8px 16px",background:"transparent",color:"#888",border:"1.5px solid #ddd",borderRadius:8,fontSize:13}},"Annulla")
+      )
+    ):null
+  );
+}
+
+function AttackForm(props) {
+  var isHead=props.type==="head";
+  var color=isHead?HEAD_COLOR:STOM_COLOR;
+  var _form=useState(isHead?emptyHead():emptyStom()); var form=_form[0]; var setForm=_form[1];
+  function set(k,v){setForm(function(f){var r=Object.assign({},f); r[k]=v; return r;});}
+  function submit(){
+    if(!form.date||!form.timeStart){alert("Inserisci almeno data e ora di inizio.");return;}
+    props.onSave(Object.assign({},form,{id:Date.now()}));
+  }
+  return e('div',{style:{background:CARD_BG,borderRadius:16,border:"2px solid "+color+"28",padding:24,marginBottom:24,boxShadow:"0 4px 24px "+color+"12"}},
+    e('h3',{style:{margin:"0 0 20px",color:color,fontFamily:"'Playfair Display',Georgia,serif",fontSize:20}},isHead?"🧠 Nuovo attacco di mal di testa":"🤢 Nuovo attacco di mal di stomaco"),
+    e(Field,{label:"Data"},
+      e('div',{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}},QUICK_DAYS.map(function(d){return e(Badge,{key:d.value,color:color,active:form.date===d.value,onClick:function(){set("date",d.value);}},d.label);})),
+      e(Inp,{type:"date",value:form.date,onChange:function(ev){set("date",ev.target.value);}})
+    ),
+    e('div',{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}},
+      e(Field,{label:"Ora inizio"},e(Inp,{type:"time",value:form.timeStart,onChange:function(ev){set("timeStart",ev.target.value);}})),
+      e(Field,{label:"Ora fine (opzionale)"},e(Inp,{type:"time",value:form.timeEnd,onChange:function(ev){set("timeEnd",ev.target.value);}}))
+    ),
+    !isHead?e(Field,{label:"Tipologia"},e(MultiSelect,{options:STOM_TYPES,value:form.stomType,onChange:function(v){set("stomType",v);},color:color})):null,
+    isHead?e(Field,{label:"Intensit\u00e0 dolore (1-10)"},e(PainScale,{value:form.painLevel,onChange:function(v){set("painLevel",v);}})):null,
+    e(Field,{label:"Dove ti trovi"},
+      e(SingleSelect,{options:isHead?HEAD_LOCATIONS:STOM_LOCATIONS,value:form.location,onChange:function(v){set("location",v);},color:color}),
+      form.location==="Altro"?e(Inp,{style:{marginTop:8},placeholder:"Specifica dove ti trovi\u2026",value:form.altroLocation,onChange:function(ev){set("altroLocation",ev.target.value);}}):null
+    ),
+    e(Field,{label:"Fattore scatenante"},
+      e(MultiSelect,{options:isHead?HEAD_TRIGGERS:STOM_TRIGGERS,value:form.triggers,onChange:function(v){set("triggers",v);},color:color}),
+      isHead&&form.triggers.indexOf("Mestruazioni")>=0?e('div',{style:{marginTop:10,padding:"12px 14px",background:"#fdf2f8",borderRadius:10,border:"1px solid #fbcfe8"}},
+        e('div',{style:{fontSize:12,fontWeight:700,color:"#9d174d",marginBottom:8}},"♀️ GIORNO DEL CICLO"),
+        e(SingleSelect,{options:GIORNI_MESTR,value:form.mestruazioniGiorno,onChange:function(v){set("mestruazioniGiorno",v);},color:"#be185d"})
+      ):null,
+      form.triggers.indexOf("Altro")>=0?e(Inp,{style:{marginTop:8},placeholder:"Specifica il fattore\u2026",value:form.altroTrigger,onChange:function(ev){set("altroTrigger",ev.target.value);}}):null
+    ),
+    !isHead&&form.triggers.indexOf("Cibo")>=0?e(Field,{label:"Cosa hai mangiato?"},e(Inp,{placeholder:"es. pasta al pomodoro\u2026",value:form.cibo,onChange:function(ev){set("cibo",ev.target.value);}})):null,
+    !isHead&&form.triggers.indexOf("Bevanda")>=0?e(Field,{label:"Cosa hai bevuto?"},e(Inp,{placeholder:"es. caff\u00e8, alcool\u2026",value:form.bevanda,onChange:function(ev){set("bevanda",ev.target.value);}})):null,
+    e(Field,{label:"Farmaco assunto"},e(SingleSelect,{options:isHead?HEAD_MEDS:STOM_MEDS,value:form.medicine,onChange:function(v){set("medicine",v||"Nessuno");},color:color})),
+    form.medicine&&form.medicine!=="Nessuno"?e(Field,{label:"Orario assunzione"},e(Inp,{type:"time",value:form.medicineTime,onChange:function(ev){set("medicineTime",ev.target.value);},style:{maxWidth:180}})):null,
+    e(Field,{label:"Effetto del farmaco"},e(SingleSelect,{options:isHead?HEAD_EFFECTS:STOM_EFFECTS,value:form.effect,onChange:function(v){set("effect",v);},color:color})),
+    e(Field,{label:"Effetti collaterali"},e(MultiSelect,{options:SIDE_EFFECTS,value:form.sideEffects,onChange:function(v){set("sideEffects",v);},color:color})),
+    e(Field,{label:"Note aggiuntive"},e(Txta,{placeholder:"Osservazioni libere\u2026",value:form.notes,onChange:function(ev){set("notes",ev.target.value);}})),
+    e('div',{style:{display:"flex",gap:12,marginTop:8}},
+      e('button',{onClick:submit,style:{padding:"11px 28px",background:color,color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:700,boxShadow:"0 4px 14px "+color+"40"}},"💾 Salva attacco"),
+      e('button',{onClick:props.onCancel,style:{padding:"11px 20px",background:"transparent",color:"#888",border:"1.5px solid #ddd",borderRadius:10,fontSize:14}},"Annulla")
+    )
+  );
+}
+
+function StatCard(props) {
+  return e('div',{style:{background:CARD_BG,borderRadius:12,padding:"24px 20px",border:"1px solid #ececec",textAlign:"center",flex:1}},
+    e('div',{style:{fontSize:42,fontWeight:900,color:props.color,fontFamily:"'Playfair Display',Georgia,serif",lineHeight:1}},props.value),
+    e('div',{style:{fontSize:12,fontWeight:700,color:"#aaa",letterSpacing:.6,marginTop:8,textTransform:"uppercase"}},props.label)
+  );
+}
+
+function BarChart(props) {
+  if(!props.data.length) return e('div',{style:{color:"#ccc",fontSize:13,padding:"12px 0"}},"Nessun dato");
+  var m=Math.max.apply(null,props.data.map(function(d){return d.value;}).concat([1]));
+  return e('div',{style:{display:"flex",flexDirection:"column",gap:8}},
+    props.data.map(function(d,i){
+      return e('div',{key:i,style:{display:"flex",alignItems:"center",gap:8}},
+        e('div',{style:{width:90,fontSize:11,color:"#555",textAlign:"right",flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},d.label),
+        e('div',{style:{flex:1,background:"#f3f3f3",borderRadius:6,height:20,overflow:"hidden"}},
+          e('div',{style:{width:((d.value/m)*100)+"%",height:"100%",background:props.color,borderRadius:6,minWidth:d.value>0?4:0}})
+        ),
+        e('div',{style:{width:20,fontSize:12,fontWeight:700,color:props.color,flexShrink:0}},d.value)
+      );
+    })
+  );
+}
+
+function MonthlyChart(props) {
+  var months=props.headData.map(function(d){return d.label;});
+  var allVals=props.headData.map(function(d){return d.value;}).concat(props.stomData.map(function(d){return d.value;})).concat([1]);
+  var maxVal=Math.max.apply(null,allVals);
+  return e('div',null,
+    e('div',{style:{display:"flex",gap:4,alignItems:"flex-end",height:100}},
+      months.map(function(m,i){
+        return e('div',{key:m,style:{flex:1,display:"flex",gap:2,alignItems:"flex-end",justifyContent:"center"}},
+          e('div',{style:{flex:1,background:HEAD_COLOR,height:((props.headData[i].value/maxVal)*90)+"px",borderRadius:"4px 4px 0 0",minHeight:props.headData[i].value>0?4:0,opacity:.85}}),
+          e('div',{style:{flex:1,background:STOM_COLOR,height:((props.stomData[i].value/maxVal)*90)+"px",borderRadius:"4px 4px 0 0",minHeight:props.stomData[i].value>0?4:0,opacity:.85}})
+        );
+      })
+    ),
+    e('div',{style:{display:"flex",gap:4,marginTop:4}},months.map(function(m){return e('div',{key:m,style:{flex:1,fontSize:10,color:"#aaa",textAlign:"center"}},m);})),
+    e('div',{style:{display:"flex",gap:16,marginTop:10,justifyContent:"center"}},
+      e('div',{style:{display:"flex",alignItems:"center",gap:5,fontSize:12,color:"#666"}},e('div',{style:{width:10,height:10,borderRadius:2,background:HEAD_COLOR}})," Testa"),
+      e('div',{style:{display:"flex",alignItems:"center",gap:5,fontSize:12,color:"#666"}},e('div',{style:{width:10,height:10,borderRadius:2,background:STOM_COLOR}})," Stomaco")
+    )
+  );
+}
+
+function PainDist(props) {
+  var wp=props.attacks.filter(function(a){return a.painLevel>0;});
+  if(!wp.length) return e('div',{style:{color:"#ccc",fontSize:13}},"Nessun dato");
+  var avg=(wp.reduce(function(s,a){return s+a.painLevel;},0)/wp.length).toFixed(1);
+  var counts=Array.from({length:10},function(_,i){return {label:String(i+1),value:wp.filter(function(a){return a.painLevel===i+1;}).length};});
+  var max=Math.max.apply(null,counts.map(function(c){return c.value;}).concat([1]));
+  return e('div',null,
+    e('div',{style:{fontSize:13,color:"#888",marginBottom:10}},"Media: ",e('strong',{style:{color:HEAD_COLOR}},avg+"/10")),
+    e('div',{style:{display:"flex",gap:4,alignItems:"flex-end",height:70}},
+      counts.map(function(c){
+        var col=Number(c.label)<=3?"#22c55e":Number(c.label)<=6?"#f59e0b":"#ef4444";
+        return e('div',{key:c.label,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}},
+          e('div',{style:{width:"100%",height:((c.value/max)*60)+"px",background:col,borderRadius:"3px 3px 0 0",minHeight:c.value>0?3:0}}),
+          e('div',{style:{fontSize:10,color:"#aaa"}},c.label)
+        );
+      })
+    )
+  );
+}
+
+function StatsPage(props) {
+  var _fm=useState(6); var fm=_fm[0]; var setFm=_fm[1];
+  var cutoff=new Date(); cutoff.setMonth(cutoff.getMonth()-fm); cutoff.setHours(0,0,0,0);
+  function fp(arr){return arr.filter(function(a){return new Date(a.date)>=cutoff;});}
+  var head=fp(props.attacks.head), stom=fp(props.attacks.stom), all=head.concat(stom);
+
+  function monthly(arr){
+    var r=[];
+    for(var i=fm-1;i>=0;i--){
+      var d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-i);
+      var dm=d.getMonth(), dy=d.getFullYear();
+      r.push({label:d.toLocaleDateString("it-IT",{month:"short"}),value:arr.filter(function(a){var ad=new Date(a.date);return ad.getMonth()===dm&&ad.getFullYear()===dy;}).length});
+    }
+    return r;
+  }
+  function countF(arr,field){
+    var m={};
+    arr.forEach(function(a){(a[field]||[]).forEach(function(t){m[t]=(m[t]||0)+1;});});
+    return Object.entries(m).sort(function(a,b){return b[1]-a[1];}).slice(0,5).map(function(x){return {label:x[0],value:x[1]};});
+  }
+  function countM(arr){
+    var m={};
+    arr.filter(function(a){return a.medicine&&a.medicine!=="Nessuno";}).forEach(function(a){m[a.medicine]=(m[a.medicine]||0)+1;});
+    return Object.entries(m).sort(function(a,b){return b[1]-a[1];}).map(function(x){return {label:x[0],value:x[1]};});
+  }
+  function eff(arr){
+    var t=arr.filter(function(a){return a.medicine&&a.medicine!=="Nessuno";}).length;
+    var p=arr.filter(function(a){return a.medicine&&a.medicine!=="Nessuno"&&a.effect==="Passato completamente";}).length;
+    return t>0?Math.round((p/t)*100):null;
+  }
+  var eh=eff(head), es=eff(stom);
+
+  if(!props.attacks.head.length&&!props.attacks.stom.length) return e('div',{style:{textAlign:"center",padding:"80px 20px"}},
+    e('div',{style:{fontSize:48}},"📊"),
+    e('div',{style:{fontSize:16,marginTop:12,fontWeight:600,color:"#bbb"}},"Nessun dato disponibile")
+  );
+
+  var headMeds=countM(head), stomMeds=countM(stom);
+
+  return e('div',{style:{maxWidth:680,margin:"0 auto",padding:"20px 16px 40px"}},
+    e('div',{style:{display:"flex",gap:6,marginBottom:24,flexWrap:"wrap"}},
+      FILTER_OPTIONS.map(function(o){
+        return e('button',{key:o.months,onClick:function(){setFm(o.months);},style:{padding:"7px 18px",borderRadius:20,border:"1.5px solid "+(fm===o.months?"#6366f1":"#e0e0e0"),background:fm===o.months?"#6366f1":"#fff",color:fm===o.months?"#fff":"#666",fontSize:13,fontWeight:600,boxShadow:fm===o.months?"0 2px 8px #6366f140":"none"}},o.label);
+      })
+    ),
+    e(STitle,null,"📋 Panoramica"),
+    e('div',{style:{display:"flex",gap:12,marginBottom:24}},
+      e(StatCard,{value:head.length,label:"Mal di testa totali",color:HEAD_COLOR}),
+      e(StatCard,{value:stom.length,label:"Mal di stomaco totali",color:STOM_COLOR})
+    ),
+    e('div',{style:{background:CARD_BG,borderRadius:12,border:"1px solid #ececec",padding:"18px 16px",marginBottom:24}},
+      e(STitle,null,"📅 Andamento per mese"),
+      all.length?e(MonthlyChart,{headData:monthly(head),stomData:monthly(stom)}):e('div',{style:{color:"#ccc",fontSize:13}},"Nessun attacco nel periodo")
+    ),
+    head.some(function(a){return a.painLevel>0;})?e('div',{style:{background:CARD_BG,borderRadius:12,border:"1px solid #ececec",padding:"18px 16px",marginBottom:24}},e(STitle,null,"💢 Intensit\u00e0 dolore"),e(PainDist,{attacks:head})):null,
+    e('div',{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:24}},
+      e('div',{style:{background:CARD_BG,borderRadius:12,border:"1px solid #ececec",padding:"18px 14px"}},e(STitle,null,"🧠 Fattori testa"),e(BarChart,{data:countF(head,"triggers"),color:HEAD_COLOR})),
+      e('div',{style:{background:CARD_BG,borderRadius:12,border:"1px solid #ececec",padding:"18px 14px"}},e(STitle,null,"🤢 Fattori stomaco"),e(BarChart,{data:countF(stom,"triggers"),color:STOM_COLOR}))
+    ),
+    headMeds.length||stomMeds.length?e('div',{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:24}},
+      headMeds.length?e('div',{style:{background:CARD_BG,borderRadius:12,border:"1px solid #ececec",padding:"18px 14px"}},e(STitle,null,"💊 Farmaci testa"),e(BarChart,{data:headMeds,color:HEAD_COLOR}),eh!==null?e('div',{style:{marginTop:10,fontSize:12,color:"#888"}},"Efficacia: ",e('span',{style:{fontWeight:700,color:eh>=60?"#22c55e":"#f59e0b"}},eh+"%")):null):null,
+      stomMeds.length?e('div',{style:{background:CARD_BG,borderRadius:12,border:"1px solid #ececec",padding:"18px 14px"}},e(STitle,null,"💊 Farmaci stomaco"),e(BarChart,{data:stomMeds,color:STOM_COLOR}),es!==null?e('div',{style:{marginTop:10,fontSize:12,color:"#888"}},"Efficacia: ",e('span',{style:{fontWeight:700,color:es>=60?"#22c55e":"#f59e0b"}},es+"%")):null):null
+    ):null,
+    e('div',{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+      e('div',{style:{background:CARD_BG,borderRadius:12,border:"1px solid #ececec",padding:"18px 14px"}},e(STitle,null,"📍 Luoghi testa"),e(BarChart,{data:countF(head.map(function(a){return {triggers:[a.location].filter(Boolean)};}), "triggers"),color:HEAD_COLOR})),
+      e('div',{style:{background:CARD_BG,borderRadius:12,border:"1px solid #ececec",padding:"18px 14px"}},e(STitle,null,"📍 Luoghi stomaco"),e(BarChart,{data:countF(stom.map(function(a){return {triggers:[a.location].filter(Boolean)};}), "triggers"),color:STOM_COLOR}))
+    )
+  );
+}
+
+function App() {
+  var _tab=useState("head"); var tab=_tab[0]; var setTab=_tab[1];
+  var _attacks=useState({head:[],stom:[]}); var attacks=_attacks[0]; var setAttacks=_attacks[1];
+  var _adding=useState(false); var adding=_adding[0]; var setAdding=_adding[1];
+  var _loaded=useState(false); var loaded=_loaded[0]; var setLoaded=_loaded[1];
+
+  useEffect(function(){
+    var saved=store.get("attacks-v1");
+    if(saved) setAttacks(saved);
+    setLoaded(true);
+  },[]);
+
+  useEffect(function(){
+    if(loaded) store.set("attacks-v1",attacks);
+  },[attacks,loaded]);
+
+  var isStats=tab==="stats";
+  var color=tab==="head"?HEAD_COLOR:STOM_COLOR;
+  var list=attacks[tab]||[];
+
+  function handleSave(a){setAttacks(function(p){var r=Object.assign({},p); r[tab]=[a].concat(p[tab]); return r;}); setAdding(false);}
+  function handleDelete(id){if(!confirm("Eliminare questo attacco?")) return; setAttacks(function(p){var r=Object.assign({},p); r[tab]=p[tab].filter(function(a){return a.id!==id;}); return r;});}
+  function handleUpdate(upd){setAttacks(function(p){var r=Object.assign({},p); r[tab]=p[tab].map(function(a){return a.id===upd.id?upd:a;}); return r;});}
+
+  var bgMap={head:"linear-gradient(135deg,#eff6ff,#f0f4ff)",stom:"linear-gradient(135deg,#fff5f5,#fff0f0)",stats:"linear-gradient(135deg,#f5f3ff,#eef2ff)"};
+  var tabDefs=[{key:"head",icon:"🧠",label:"Testa",color:HEAD_COLOR,count:attacks.head.length},{key:"stom",icon:"🤢",label:"Stomaco",color:STOM_COLOR,count:attacks.stom.length},{key:"stats",icon:"📊",label:"Statistiche",color:"#6366f1",count:null}];
+
+  return e('div',{style:{minHeight:"100vh",background:bgMap[tab],fontFamily:"'DM Sans','Segoe UI',sans-serif",paddingBottom:60,transition:"background .4s"}},
+    e('div',{style:{background:"#fff",borderBottom:"1px solid #ececec",padding:"24px 24px 0",boxShadow:"0 2px 12px rgba(0,0,0,.04)"}},
+      e('h1',{style:{margin:"0 0 20px",fontFamily:"'Playfair Display',Georgia,serif",fontSize:26,fontWeight:900,color:"#1a1a1a",letterSpacing:-.5}},"Diario delle sfighe"),
+      e('div',{style:{display:"flex"}},
+        tabDefs.map(function(t){
+          return e('button',{key:t.key,onClick:function(){setTab(t.key);setAdding(false);},style:{flex:1,padding:"12px 6px",border:"none",background:"transparent",borderBottom:"3px solid "+(tab===t.key?t.color:"transparent"),fontSize:13,fontWeight:700,color:tab===t.key?t.color:"#aaa",transition:"all .2s"}},
+            t.icon+" "+t.label,
+            t.count!==null?e('span',{style:{marginLeft:6,background:tab===t.key?t.color:"#eee",color:tab===t.key?"#fff":"#aaa",borderRadius:20,padding:"2px 7px",fontSize:11,fontWeight:700}},t.count):null
+          );
+        })
+      )
+    ),
+    isStats?e(StatsPage,{attacks:attacks}):null,
+    !isStats?e('div',{style:{maxWidth:680,margin:"0 auto",padding:"24px 16px 0"}},
+      !adding?e('button',{onClick:function(){setAdding(true);},style:{width:"100%",padding:14,background:color,border:"none",borderRadius:12,color:"#fff",fontSize:15,fontWeight:700,marginBottom:24,boxShadow:"0 6px 20px "+color+"35"}},"+ Registra nuovo attacco"):null,
+      adding?e(AttackForm,{type:tab,onSave:handleSave,onCancel:function(){setAdding(false);}}):null,
+      list.length===0&&!adding?e('div',{style:{textAlign:"center",padding:"60px 20px"}},
+        e('div',{style:{fontSize:48}},tab==="head"?"🧠":"🤢"),
+        e('div',{style:{fontSize:16,marginTop:12,fontWeight:600,color:"#bbb"}},"Nessun attacco registrato"),
+        e('div',{style:{fontSize:13,color:"#ccc",marginTop:6}},"Premi il pulsante sopra per aggiungerne uno")
+      ):null,
+      list.length>0?e('div',null,
+        e('div',{style:{fontSize:11,fontWeight:700,color:"#bbb",letterSpacing:.8,marginBottom:12}},"STORICO \u2014 "+list.length+" "+(list.length===1?"attacco":"attacchi")),
+        list.map(function(a){return e(AttackCard,{key:a.id,a:a,color:color,onDelete:handleDelete,onUpdate:handleUpdate});})
+      ):null
+    ):null
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(e(App));
+
+if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(function(){});
+</script>
+</body>
+</html>
